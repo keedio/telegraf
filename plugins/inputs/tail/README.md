@@ -46,3 +46,51 @@ The plugin expects messages in one of the
   data_format = "influx"
 ```
 
+### Keedio fork:
+- new field with tailed file's name per line.
+```
+{
+    "fields":
+        {
+            "filename":"/tmp/tailme/telegraftest3.log",
+            "value":"linea 39 de fichero telegraftest3.log - viernes, 16 de junio de 2017, 12:32:31 CEST"
+         },
+    "name":"tail",
+    "tags":
+        {
+           "host":"LuisKee-laptop.local"
+         },
+    "timestamp":1497609151276319204
+}
+```
+
+### Custom config file:
+```
+###############################################################################
+#                    SERVICE INPUT PLUGINS                                    #
+###############################################################################
+# Stream a log file, like the tail -f command
+[[inputs.tail]]
+  ## files to tail.
+  ## These accept standard unix glob matching rules, but with the addition of
+  ## ** as a "super asterisk". ie:
+  ##   "/var/log/**.log"  -> recursively find all .log files in /var/log
+  ##   "/var/log/*/*.log" -> find all .log files with a parent dir in /var/log
+  ##   "/var/log/apache.log" -> just tail the apache log file
+  ##
+  ## See https://github.com/gobwas/glob for more examples
+  ##
+  files = ["/tmp/tailme/*.log"]
+  ## Read file from beginning.
+  from_beginning = false
+  ## Whether file is a named pipe
+  pipe = false
+
+  ## Data format to consume.
+  ## Each data format has its own unique set of configuration options, read
+  ## more about them here:
+  ## https://github.com/influxdata/telegraf/blob/master/docs/DATA_FORMATS_INPUT.md
+  data_format = "value"
+  data_type = "string"
+ ```
+ 

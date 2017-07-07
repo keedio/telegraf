@@ -128,6 +128,7 @@ func (t *Tail) receiver(tailer *tail.Tail) {
 		text := strings.TrimRight(line.Text, "\r")
 
 		m, err = t.parser.ParseLine(text)
+		if m != nil { m.AddField("filename", tailer.Filename) }
 		if err == nil {
 			t.acc.AddFields(m.Name(), m.Fields(), m.Tags(), m.Time())
 		} else {

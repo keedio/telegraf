@@ -36,6 +36,7 @@ func TestTailFromBeginning(t *testing.T) {
 	acc.AssertContainsTaggedFields(t, "cpu",
 		map[string]interface{}{
 			"usage_idle": float64(100),
+			"filename": string(tmpfile.Name()),
 		},
 		map[string]string{
 			"mytag": "foo",
@@ -73,6 +74,7 @@ func TestTailFromEnd(t *testing.T) {
 	acc.AssertContainsTaggedFields(t, "cpu",
 		map[string]interface{}{
 			"usage_idle": float64(100),
+			"filename": string(tmpfile.Name()),
 		},
 		map[string]string{
 			"othertag": "foo",
@@ -127,9 +129,11 @@ func TestTailDosLineendings(t *testing.T) {
 	acc.AssertContainsFields(t, "cpu",
 		map[string]interface{}{
 			"usage_idle": float64(100),
+			"filename": string(tmpfile.Name()),
 		})
 	acc.AssertContainsFields(t, "cpu2",
 		map[string]interface{}{
 			"usage_idle": float64(200),
+			"filename": string(tmpfile.Name()),
 		})
 }

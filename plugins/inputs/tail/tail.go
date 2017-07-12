@@ -64,7 +64,10 @@ func (t *Tail) Description() string {
 }
 
 func (t *Tail) Gather(acc telegraf.Accumulator) error {
-	return nil
+	t.Lock()
+	defer t.Unlock()
+	// always start from the beginning of files that appear while we're running
+	return t.tailNewfiles(true)
 }
 
 func (t *Tail) Start(acc telegraf.Accumulator) error {
@@ -107,7 +110,7 @@ func (t *Tail) Start(acc telegraf.Accumulator) error {
 		}
 	}
 
-	return nil
+	return t.tailNewfiles(t.FromBeginning)
 }
 
 // this is launched as a goroutine to continuously watch a tailed logfile
@@ -165,3 +168,42 @@ func init() {
 		return NewTail()
 	})
 }
+
+// check the globs against files on disk, and start tailing any new files.
+// Assumes t's lock is held!
+func (t *Tail) tailNewfiles(fromBeginning bool) error {
+	var seek tail.SeekInfo
+	if !fromBeginning {
+		seek.Whence = 2
+		seek.Offset = 0
+	}
+
+	// Create a "tailer" for each file
+	for _, filepath := range t.Files {
+		g, err := globpath.Compile(filepath)
+		if err != nil {
+			t.acc.AddError(fmt.Errorf("E! Error Glob %s failed to compile, %s", filepath, err))
+		}
+		for file, _ := range g.Match() {
+			tailer, err := tail.TailFile(file,
+				tail.Config{
+					ReOpen:    true,
+					Follow:    true,
+					Location:  &seek,
+					MustExist: true,
+					Pipe:      t.Pipe,
+				})
+			if err != nil {
+				t.acc.AddError(err)
+				continue
+			}
+			// create a goroutine for each "tailer"
+			t.wg.Add(1)
+			go t.receiver(tailer)
+			t.tailers = append(t.tailers, tailer)
+		}
+	}
+
+	return nil
+}
+

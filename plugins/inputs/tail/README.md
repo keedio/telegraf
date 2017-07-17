@@ -47,6 +47,8 @@ The plugin expects messages in one of the
 ```
 
 ### Keedio fork:
+- discover new file and tail new file (handle newly created files)
+ no need to restart telegraf, new files are discovered.
 - new field with tailed file's name per line.
 ```
 {

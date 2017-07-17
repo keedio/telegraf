@@ -26,11 +26,11 @@ type Tail struct {
 	sync.Mutex
 }
 
-//func NewTail() *Tail {
-//	return &Tail{
-//		FromBeginning: false,
-//	}
-//}
+func NewTail() *Tail {
+	return &Tail{
+		FromBeginning: false,
+	}
+}
 
 const sampleConfig = `
   ## files to tail.

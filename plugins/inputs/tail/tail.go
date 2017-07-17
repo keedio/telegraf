@@ -18,19 +18,19 @@ type Tail struct {
 	FromBeginning bool
 	Pipe          bool
 
-	tailers []*tail.Tail
-	parser  parsers.Parser
-	wg      sync.WaitGroup
-	acc     telegraf.Accumulator
+	tailers       map[string]*tail.Tail
+	parser        parsers.Parser
+	wg            sync.WaitGroup
+	acc           telegraf.Accumulator
 
 	sync.Mutex
 }
 
-func NewTail() *Tail {
-	return &Tail{
-		FromBeginning: false,
-	}
-}
+//func NewTail() *Tail {
+//	return &Tail{
+//		FromBeginning: false,
+//	}
+//}
 
 const sampleConfig = `
   ## files to tail.
@@ -66,6 +66,7 @@ func (t *Tail) Description() string {
 func (t *Tail) Gather(acc telegraf.Accumulator) error {
 	t.Lock()
 	defer t.Unlock()
+	t.acc = acc
 	// always start from the beginning of files that appear while we're running
 	return t.tailNewfiles(true)
 }
@@ -75,6 +76,7 @@ func (t *Tail) Start(acc telegraf.Accumulator) error {
 	defer t.Unlock()
 
 	t.acc = acc
+	t.tailers = make(map[string]*tail.Tail)
 
 	var seek *tail.SeekInfo
 	if !t.Pipe && !t.FromBeginning {
@@ -106,7 +108,7 @@ func (t *Tail) Start(acc telegraf.Accumulator) error {
 			// create a goroutine for each "tailer"
 			t.wg.Add(1)
 			go t.receiver(tailer)
-			t.tailers = append(t.tailers, tailer)
+			t.tailers[file] = tailer
 		}
 	}
 
@@ -131,7 +133,9 @@ func (t *Tail) receiver(tailer *tail.Tail) {
 		text := strings.TrimRight(line.Text, "\r")
 
 		m, err = t.parser.ParseLine(text)
-		if m != nil { m.AddField("filename", tailer.Filename) }
+		if m != nil {
+			m.AddField("filename", tailer.Filename)
+		}
 		if err == nil {
 			t.acc.AddFields(m.Name(), m.Fields(), m.Tags(), m.Time())
 		} else {
@@ -143,6 +147,59 @@ func (t *Tail) receiver(tailer *tail.Tail) {
 		t.acc.AddError(fmt.Errorf("E! Error tailing file %s, Error: %s\n",
 			tailer.Filename, err))
 	}
+}
+
+
+
+func (t *Tail) SetParser(parser parsers.Parser) {
+	t.parser = parser
+}
+
+
+
+// check the globs against files on disk, and start tailing any new files.
+// Assumes t's lock is held!
+func (t *Tail) tailNewfiles(fromBeginning bool) error {
+	var seek tail.SeekInfo
+	if !fromBeginning {
+		seek.Whence = 2
+		seek.Offset = 0
+	}
+
+	// Create a "tailer" for each file
+	for _, filepath := range t.Files {
+		g, err := globpath.Compile(filepath)
+		if err != nil {
+			fmt.Printf("E! Error Glob %s failed to compile, %s", filepath, err)
+			continue
+		}
+
+		files := g.Match()
+
+		for file, _ := range files {
+			if _, ok := t.tailers[file]; ok {
+				// we're already tailing this file
+				continue
+			}
+			tailer, err := tail.TailFile(file,
+				tail.Config{
+					ReOpen:    true,
+					Follow:    true,
+					Location:  &seek,
+					MustExist: true,
+				})
+
+				t.acc.AddError(err)
+
+			// create a goroutine for each "tailer"
+			t.wg.Add(1)
+			go t.receiver(tailer)
+			t.tailers[file] = tailer
+
+		}
+	}
+
+	return nil
 }
 
 func (t *Tail) Stop() {
@@ -159,51 +216,9 @@ func (t *Tail) Stop() {
 	t.wg.Wait()
 }
 
-func (t *Tail) SetParser(parser parsers.Parser) {
-	t.parser = parser
-}
-
 func init() {
 	inputs.Add("tail", func() telegraf.Input {
-		return NewTail()
+		return &Tail{}
 	})
-}
-
-// check the globs against files on disk, and start tailing any new files.
-// Assumes t's lock is held!
-func (t *Tail) tailNewfiles(fromBeginning bool) error {
-	var seek tail.SeekInfo
-	if !fromBeginning {
-		seek.Whence = 2
-		seek.Offset = 0
-	}
-
-	// Create a "tailer" for each file
-	for _, filepath := range t.Files {
-		g, err := globpath.Compile(filepath)
-		if err != nil {
-			t.acc.AddError(fmt.Errorf("E! Error Glob %s failed to compile, %s", filepath, err))
-		}
-		for file, _ := range g.Match() {
-			tailer, err := tail.TailFile(file,
-				tail.Config{
-					ReOpen:    true,
-					Follow:    true,
-					Location:  &seek,
-					MustExist: true,
-					Pipe:      t.Pipe,
-				})
-			if err != nil {
-				t.acc.AddError(err)
-				continue
-			}
-			// create a goroutine for each "tailer"
-			t.wg.Add(1)
-			go t.receiver(tailer)
-			t.tailers = append(t.tailers, tailer)
-		}
-	}
-
-	return nil
 }
 
